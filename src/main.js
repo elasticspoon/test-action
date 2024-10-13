@@ -1,5 +1,36 @@
 const core = require('@actions/core')
-const { wait } = require('./wait')
+const fs = require('fs')
+const github = require('@actions/github')
+
+async function createComment({ octokit, owner, repo, issueNumber, body }) {
+  const { data: comment } = await octokit.rest.issues.createComment({
+    owner,
+    repo,
+    issue_number: issueNumber,
+    body
+  })
+
+  core.setOutput('id', comment.id)
+  core.setOutput('body', comment.body)
+  core.setOutput('html-url', comment.html_url)
+
+  return comment
+}
+
+async function updateComment({ octokit, owner, repo, commentId, body }) {
+  const { data: comment } = await octokit.rest.issues.updateComment({
+    owner,
+    repo,
+    comment_id: commentId,
+    body
+  })
+
+  core.setOutput('id', comment.id)
+  core.setOutput('body', comment.body)
+  core.setOutput('html-url', comment.html_url)
+
+  return comment
+}
 
 /**
  * The main function for the action.
@@ -7,21 +38,74 @@ const { wait } = require('./wait')
  */
 async function run() {
   try {
-    const ms = core.getInput('milliseconds', { required: true })
+    const message = core.getInput('message')
+    const filePath = core.getInput('file-path')
+    const githubToken = core.getInput('github-token')
 
-    // Debug logs are only output if the `ACTIONS_STEP_DEBUG` secret is true
-    core.debug(`Waiting ${ms} milliseconds ...`)
+    // no but maybe something about action type
+    // if (!message && !filePath && mode !== 'delete') {
+    //   core.setFailed('Either "filePath" or "message" should be provided as input unless running as "delete".');
+    //   return;
+    // }
 
-    // Log the current timestamp, wait, then log the new timestamp
-    core.debug(new Date().toTimeString())
-    await wait(parseInt(ms, 10))
-    core.debug(new Date().toTimeString())
+    let content = message || ''
+    if (!message && filePath) {
+      content = fs.readFileSync(filePath, 'utf8')
+    }
 
-    // Set outputs for other workflow steps to use
-    core.setOutput('time', new Date().toTimeString())
+    const context = github.context
+
+    const prNumber = context.payload.pull_request?.number
+    if (!prNumber) {
+      core.setFailed('No issue/pull request in current context.')
+      return
+    }
+
+    const prTitle = context.payload.pull_request?.title
+    const titleRegex = new RegExp(`\\[GLOBAL-\\d*\\]`)
+    if (!prTitle.match(titleRegex)) {
+      content = `Add [GLOBAL-XXX] to your PR title to link up your Jira ticket\n${content}`
+    }
+
+    const octokit = github.getOctokit(githubToken)
+
+    const commentTagPattern = `<!-- elasticspoon/actions-comment-pull-request -->`
+    const body = `${content}\n${commentTagPattern}`
+
+    if (commentTagPattern) {
+      let comment
+      for await (const { data: comments } of octokit.paginate.iterator(
+        octokit.rest.issues.listComments,
+        {
+          ...context.repo,
+          issue_number: prNumber
+        }
+      )) {
+        comment = comments.find(c => c?.body?.includes(commentTagPattern))
+        if (comment) break
+      }
+
+      if (comment) {
+        await updateComment({
+          octokit,
+          ...context.repo,
+          commentId: comment.id,
+          body
+        })
+        return
+      }
+    }
+
+    await createComment({
+      octokit,
+      ...context.repo,
+      issueNumber: prNumber,
+      body
+    })
   } catch (error) {
-    // Fail the workflow run if an error occurs
-    core.setFailed(error.message)
+    if (error instanceof Error) {
+      core.setFailed(error.message)
+    }
   }
 }
 
