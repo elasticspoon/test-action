@@ -1,96 +1,38 @@
-/**
- * Unit tests for the action's main functionality, src/main.js
- */
+const github = require('@actions/github')
 const core = require('@actions/core')
-const main = require('../src/main')
+const fs = require('fs')
+const { run } = require('../src/main')
 
-// Mock the GitHub Actions core library
-const debugMock = jest.spyOn(core, 'debug').mockImplementation()
-const getInputMock = jest.spyOn(core, 'getInput').mockImplementation()
-const setFailedMock = jest.spyOn(core, 'setFailed').mockImplementation()
-const setOutputMock = jest.spyOn(core, 'setOutput').mockImplementation()
+jest.mock('@actions/core')
+jest.mock('@actions/github')
 
-// Mock the action's main function
-const runMock = jest.spyOn(main, 'run')
+const gh = github.getOctokit('_')
+const setLabelsMock = jest.spyOn(gh.rest.issues, 'setLabels')
+const reposMock = jest.spyOn(gh.rest.repos, 'getContent')
+const paginateMock = jest.spyOn(gh, 'paginate')
+const getPullMock = jest.spyOn(gh.rest.pulls, 'get')
+const readFileSyncMock = jest.spyOn(fs, 'readFileSync')
+const existsSyncMock = jest.spyOn(fs, 'existsSync')
+const coreErrorMock = jest.spyOn(core, 'error')
+const coreWarningMock = jest.spyOn(core, 'warning')
+const coreSetFailedMock = jest.spyOn(core, 'setFailed')
+const setOutputSpy = jest.spyOn(core, 'setOutput')
 
-// Other utilities
-const timeRegex = /^\d{2}:\d{2}:\d{2}/
+const configureInput = mockInput => {
+  jest
+    .spyOn(core, 'getInput')
+    .mockImplementation((name, ...opts) => mockInput[name])
+}
 
-describe('action', () => {
-  beforeEach(() => {
-    jest.clearAllMocks()
-  })
+describe('run', () => {
+  it('sets a failed status when no pull request number is found', async () => {
+    configureInput({ message: 'hello' })
+    github.context.payload.pull_request.number = null
 
-  it('sets the time output', async () => {
-    // Set the action's inputs as return values from core.getInput()
-    getInputMock.mockImplementation(name => {
-      switch (name) {
-        case 'milliseconds':
-          return '500'
-        default:
-          return ''
-      }
-    })
+    await run()
 
-    await main.run()
-    expect(runMock).toHaveReturned()
-
-    // Verify that all of the core library functions were called correctly
-    expect(debugMock).toHaveBeenNthCalledWith(1, 'Waiting 500 milliseconds ...')
-    expect(debugMock).toHaveBeenNthCalledWith(
-      2,
-      expect.stringMatching(timeRegex)
-    )
-    expect(debugMock).toHaveBeenNthCalledWith(
-      3,
-      expect.stringMatching(timeRegex)
-    )
-    expect(setOutputMock).toHaveBeenNthCalledWith(
-      1,
-      'time',
-      expect.stringMatching(timeRegex)
-    )
-  })
-
-  it('sets a failed status', async () => {
-    // Set the action's inputs as return values from core.getInput()
-    getInputMock.mockImplementation(name => {
-      switch (name) {
-        case 'milliseconds':
-          return 'this is not a number'
-        default:
-          return ''
-      }
-    })
-
-    await main.run()
-    expect(runMock).toHaveReturned()
-
-    // Verify that all of the core library functions were called correctly
-    expect(setFailedMock).toHaveBeenNthCalledWith(
-      1,
-      'milliseconds not a number'
-    )
-  })
-
-  it('fails if no input is provided', async () => {
-    // Set the action's inputs as return values from core.getInput()
-    getInputMock.mockImplementation(name => {
-      switch (name) {
-        case 'milliseconds':
-          throw new Error('Input required and not supplied: milliseconds')
-        default:
-          return ''
-      }
-    })
-
-    await main.run()
-    expect(runMock).toHaveReturned()
-
-    // Verify that all of the core library functions were called correctly
-    expect(setFailedMock).toHaveBeenNthCalledWith(
-      1,
-      'Input required and not supplied: milliseconds'
+    expect(coreSetFailedMock).toHaveBeenCalledWith(
+      'No issue/pull request in current context.'
     )
   })
 })
