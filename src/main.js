@@ -11,16 +11,12 @@ async function run() {
   try {
     const context = github.context
     const prNumber = context.payload.pull_request?.number
-    if (!prNumber) {
+    const prTitle = context.payload.pull_request?.title
+    core.info(JSON.stringify(context.payload))
+    if (!prNumber || !prTitle) {
       core.setFailed('No issue/pull request in current context.')
       return
     }
-    //
-    // no but maybe something about action type
-    // if (!message && !filePath && mode !== 'delete') {
-    //   core.setFailed('Either "filePath" or "message" should be provided as input unless running as "delete".');
-    //   return;
-    // }
 
     const message = core.getInput('message')
     const filePath = core.getInput('file-path')
@@ -31,15 +27,10 @@ async function run() {
       content = fs.readFileSync(filePath, 'utf8')
     }
 
-    const prTitle = context.payload.pull_request?.title
-    const globalMatch = prTitle.match(/\[GLOBAL-(\d{1,5})\]/)
-    const diditMatch = prTitle.match(/\[(\d{5})\]/)
-    if (globalMatch) {
+    const [ticketRepo, ticketNum] = getRepoAndTicket(prTitle)
+    if (ticketNum) {
       content =
-        `[Click here to visit linked Jira ticket.](https://example.com/GLOBAL-${globalMatch[1]})\n${content}`.trim()
-    } else if (diditMatch) {
-      content =
-        `[Click here to visit linked Jira ticket.](https://example.com/DIDIT-${diditMatch[1]})\n${content}`.trim()
+        `[Click here to visit linked Jira ticket.](https://example.com/${ticketRepo}-${ticketNum})\n${content}`.trim()
     } else {
       content =
         `Add [GLOBAL-XXX] to your PR title to link up your Jira ticket\n${content}`.trim()
@@ -76,6 +67,18 @@ async function run() {
     if (error instanceof Error) {
       core.setFailed(error.message)
     }
+  }
+}
+function getRepoAndTicket(prTitle) {
+  const globalMatch = prTitle.match(/\[GLOBAL-(\d{1,5})\]/)
+  const diditMatch = prTitle.match(/\[(\d{5})\]/)
+
+  if (globalMatch) {
+    return ['GLOBAL', globalMatch[1]]
+  } else if (diditMatch) {
+    return ['DIDIT', diditMatch[1]]
+  } else {
+    return [null, null]
   }
 }
 
