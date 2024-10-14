@@ -57,6 +57,7 @@ async function updateComment({ octokit, owner, repo, commentId, body }) {
 }
 
 async function findComment(octokit, context, prNumber, commentTagPattern) {
+  let comment
   for await (const { data: comments } of octokit.paginate.iterator(
     octokit.rest.issues.listComments,
     {
@@ -64,9 +65,10 @@ async function findComment(octokit, context, prNumber, commentTagPattern) {
       issue_number: prNumber
     }
   )) {
-    const comment = comments.find(c => c?.body?.includes(commentTagPattern))
+    comment = comments.find(c => c?.body?.includes(commentTagPattern))
     if (comment) break
   }
+  return comment
 }
 
 module.exports = {

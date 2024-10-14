@@ -29207,7 +29207,107 @@ function wrappy (fn, cb) {
 const core = __nccwpck_require__(2186)
 const fs = __nccwpck_require__(7147)
 const github = __nccwpck_require__(5438)
+const { createComment, updateComment, findComment } = __nccwpck_require__(1270)
 
+/**
+ * The main function for the action.
+ * @returns {Promise<void>} Resolves when the action is complete.
+ */
+async function run() {
+  try {
+    const context = github.context
+    const prNumber = context.payload.pull_request?.number
+    if (!prNumber) {
+      core.setFailed('No issue/pull request in current context.')
+      return
+    }
+    //
+    // no but maybe something about action type
+    // if (!message && !filePath && mode !== 'delete') {
+    //   core.setFailed('Either "filePath" or "message" should be provided as input unless running as "delete".');
+    //   return;
+    // }
+
+    const message = core.getInput('message')
+    const filePath = core.getInput('file-path')
+    const githubToken = core.getInput('github-token')
+
+    let content = message || ''
+    if (!message && filePath) {
+      content = fs.readFileSync(filePath, 'utf8')
+    }
+
+    const prTitle = context.payload.pull_request?.title
+    const titleRegex = new RegExp(`\\[GLOBAL-(\\d*)\\]`)
+    const match = prTitle.match(titleRegex)
+    if (match) {
+      content =
+        `[Click here to visit linked Jira ticket.](https://example.com/GLOBAL-${match[1]})\n${content}`.trim()
+    } else {
+      content =
+        `Add [GLOBAL-XXX] to your PR title to link up your Jira ticket\n${content}`.trim()
+    }
+
+    const octokit = github.getOctokit(githubToken)
+
+    const commentTagPattern = `<!-- elasticspoon/actions-comment-pull-request -->`
+    const body = `${content}\n${commentTagPattern}`
+
+    const comment = await findComment(
+      octokit,
+      context,
+      prNumber,
+      commentTagPattern
+    )
+
+    if (comment) {
+      await updateComment({
+        octokit,
+        ...context.repo,
+        commentId: comment.id,
+        body
+      })
+    } else {
+      await createComment({
+        octokit,
+        ...context.repo,
+        issueNumber: prNumber,
+        body
+      })
+    }
+  } catch (error) {
+    if (error instanceof Error) {
+      core.setFailed(error.message)
+    }
+  }
+}
+
+module.exports = {
+  run,
+  findComment
+}
+
+
+/***/ }),
+
+/***/ 1270:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+const core = __nccwpck_require__(2186)
+
+/**
+ * Creates a new issue comment on a GitHub repository.
+ *
+ * @async
+ * @function createComment
+ * @param {Object} options
+ * @param {Object} options.octokit - octokit client
+ * @param {string} options.owner
+ * @param {string} options.repo
+ * @param {number} options.issueNumber - The number of the issue where the comment will be created.
+ * @param {string} options.body
+ * @returns {Promise<Object>} The newly created comment data.
+ */
 async function createComment({ octokit, owner, repo, issueNumber, body }) {
   const { data: comment } = await octokit.rest.issues.createComment({
     owner,
@@ -29223,6 +29323,19 @@ async function createComment({ octokit, owner, repo, issueNumber, body }) {
   return comment
 }
 
+/**
+ * Updates an existing issue comment on a GitHub repository.
+ *
+ * @async
+ * @function updateComment
+ * @param {Object} options
+ * @param {Object} options.octokit - octokit client
+ * @param {string} options.owner
+ * @param {string} options.repo
+ * @param {number} options.commentId - The ID of the comment to be updated.
+ * @param {string} options.body
+ * @returns {Promise<Object>} The updated comment data.
+ */
 async function updateComment({ octokit, owner, repo, commentId, body }) {
   const { data: comment } = await octokit.rest.issues.updateComment({
     owner,
@@ -29238,85 +29351,25 @@ async function updateComment({ octokit, owner, repo, commentId, body }) {
   return comment
 }
 
-/**
- * The main function for the action.
- * @returns {Promise<void>} Resolves when the action is complete.
- */
-async function run() {
-  try {
-    const message = core.getInput('message')
-    const filePath = core.getInput('file-path')
-    const githubToken = core.getInput('github-token')
-
-    // no but maybe something about action type
-    // if (!message && !filePath && mode !== 'delete') {
-    //   core.setFailed('Either "filePath" or "message" should be provided as input unless running as "delete".');
-    //   return;
-    // }
-
-    let content = message || ''
-    if (!message && filePath) {
-      content = fs.readFileSync(filePath, 'utf8')
-    }
-
-    const context = github.context
-
-    const prNumber = context.payload.pull_request?.number
-    if (!prNumber) {
-      core.setFailed('No issue/pull request in current context.')
-      return
-    }
-
-    const prTitle = context.payload.pull_request?.title
-    const titleRegex = new RegExp(`\\[GLOBAL-\\d*\\]`)
-    if (!prTitle.match(titleRegex)) {
-      content = `Add [GLOBAL-XXX] to your PR title to link up your Jira ticket\n${content}`
-    }
-
-    const octokit = github.getOctokit(githubToken)
-
-    const commentTagPattern = `<!-- elasticspoon/actions-comment-pull-request -->`
-    const body = `${content}\n${commentTagPattern}`
-
-    if (commentTagPattern) {
-      let comment
-      for await (const { data: comments } of octokit.paginate.iterator(
-        octokit.rest.issues.listComments,
-        {
-          ...context.repo,
-          issue_number: prNumber
-        }
-      )) {
-        comment = comments.find(c => c?.body?.includes(commentTagPattern))
-        if (comment) break
-      }
-
-      if (comment) {
-        await updateComment({
-          octokit,
-          ...context.repo,
-          commentId: comment.id,
-          body
-        })
-        return
-      }
-    }
-
-    await createComment({
-      octokit,
+async function findComment(octokit, context, prNumber, commentTagPattern) {
+  let comment
+  for await (const { data: comments } of octokit.paginate.iterator(
+    octokit.rest.issues.listComments,
+    {
       ...context.repo,
-      issueNumber: prNumber,
-      body
-    })
-  } catch (error) {
-    if (error instanceof Error) {
-      core.setFailed(error.message)
+      issue_number: prNumber
     }
+  )) {
+    comment = comments.find(c => c?.body?.includes(commentTagPattern))
+    if (comment) break
   }
+  return comment
 }
 
 module.exports = {
-  run
+  createComment,
+  updateComment,
+  findComment
 }
 
 
@@ -31216,6 +31269,7 @@ var __webpack_exports__ = {};
  * The entrypoint for the action.
  */
 const { run } = __nccwpck_require__(1713)
+const { createComment, updateComment } = __nccwpck_require__(1270)
 
 run()
 
