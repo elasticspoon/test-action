@@ -2,6 +2,7 @@ const context = {
   payload: {
     pull_request: {
       number: 123,
+      title: 'pull request 123',
       head: {
         ref: 'head-branch-name'
       },
@@ -11,15 +12,32 @@ const context = {
     }
   },
   repo: {
-    owner: 'monalisa',
-    repo: 'helloworld'
+    owner: 'test_user',
+    repo: 'test_repo'
   }
 }
 
 const mockApi = {
   rest: {
     issues: {
-      setLabels: jest.fn()
+      createComment: jest.fn().mockReturnValue({
+        data: {
+          comment: {
+            id: 123,
+            body: 'body',
+            html_url: 'url'
+          }
+        }
+      }),
+      updateComment: jest.fn().mockReturnValue({
+        data: {
+          comment: {
+            id: 123,
+            body: 'body',
+            html_url: 'url'
+          }
+        }
+      })
     },
     pulls: {
       get: jest.fn().mockResolvedValue({

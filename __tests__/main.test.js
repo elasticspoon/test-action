@@ -7,16 +7,22 @@ jest.mock('@actions/core')
 jest.mock('@actions/github')
 
 const gh = github.getOctokit('_')
-const setLabelsMock = jest.spyOn(gh.rest.issues, 'setLabels')
-const reposMock = jest.spyOn(gh.rest.repos, 'getContent')
-const paginateMock = jest.spyOn(gh, 'paginate')
-const getPullMock = jest.spyOn(gh.rest.pulls, 'get')
-const readFileSyncMock = jest.spyOn(fs, 'readFileSync')
-const existsSyncMock = jest.spyOn(fs, 'existsSync')
+const createCommentMock = jest.spyOn(gh.rest.issues, 'createComment')
+const updateCommentMock = jest.spyOn(gh.rest.issues, 'updateComment')
+// const reposMock = jest.spyOn(gh.rest.repos, 'getContent')
+// const paginateMock = jest.spyOn(gh, 'paginate')
+// const getPullMock = jest.spyOn(gh.rest.pulls, 'get')
+// const readFileSyncMock = jest.spyOn(fs, 'readFileSync')
+// const existsSyncMock = jest.spyOn(fs, 'existsSync')
 const coreErrorMock = jest.spyOn(core, 'error')
 const coreWarningMock = jest.spyOn(core, 'warning')
 const coreSetFailedMock = jest.spyOn(core, 'setFailed')
 const setOutputSpy = jest.spyOn(core, 'setOutput')
+
+jest.mock('../src/restClient.js', () => ({
+  ...jest.requireActual('../src/restClient.js'),
+  findComment: jest.fn()
+}))
 
 const configureInput = mockInput => {
   jest
@@ -25,6 +31,10 @@ const configureInput = mockInput => {
 }
 
 describe('run', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+  })
+
   it('sets a failed status when no pull request number is found', async () => {
     configureInput({ message: 'hello' })
     github.context.payload.pull_request.number = null
@@ -34,5 +44,21 @@ describe('run', () => {
     expect(coreSetFailedMock).toHaveBeenCalledWith(
       'No issue/pull request in current context.'
     )
+  })
+
+  it('prepends comment tag', async () => {
+    configureInput({ message: 'hello' })
+    github.context.payload.pull_request.number = 123
+
+    await run()
+
+    expect(createCommentMock).toHaveBeenCalledWith({
+      issue_number: 123,
+      owner: 'test_user',
+      repo: 'test_repo',
+      body: `Add [GLOBAL-XXX] to your PR title to link up your Jira ticket
+hello
+<!-- elasticspoon/actions-comment-pull-request -->`
+    })
   })
 })
