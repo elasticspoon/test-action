@@ -32,11 +32,14 @@ async function run() {
     }
 
     const prTitle = context.payload.pull_request?.title
-    const titleRegex = new RegExp(`\\[GLOBAL-(\\d*)\\]`)
-    const match = prTitle.match(titleRegex)
-    if (match) {
+    const globalMatch = prTitle.match(/\[GLOBAL-(\d{1,5})\]/)
+    const diditMatch = prTitle.match(/\[(\d{5})\]/)
+    if (globalMatch) {
       content =
-        `[Click here to visit linked Jira ticket.](https://example.com/GLOBAL-${match[1]})\n${content}`.trim()
+        `[Click here to visit linked Jira ticket.](https://example.com/GLOBAL-${globalMatch[1]})\n${content}`.trim()
+    } else if (diditMatch) {
+      content =
+        `[Click here to visit linked Jira ticket.](https://example.com/DIDIT-${diditMatch[1]})\n${content}`.trim()
     } else {
       content =
         `Add [GLOBAL-XXX] to your PR title to link up your Jira ticket\n${content}`.trim()

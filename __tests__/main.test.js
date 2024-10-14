@@ -58,6 +58,28 @@ describe('run', () => {
       )
     })
   })
+  describe('when pr title matches didt regex', () => {
+    beforeEach(() => {
+      github.context.payload.pull_request.title = 'PR [12345]'
+    })
+    afterEach(() => {
+      github.context.payload.pull_request.title = 'test pr'
+    })
+
+    it('calls createComment with comment_id', async () => {
+      configureInput({})
+
+      await run()
+
+      expect(createCommentMock).toHaveBeenCalledWith({
+        issue_number: 123,
+        owner: 'test_user',
+        repo: 'test_repo',
+        body: `[Click here to visit linked Jira ticket.](https://example.com/DIDIT-12345)
+<!-- elasticspoon/actions-comment-pull-request -->`
+      })
+    })
+  })
   describe('when pr title matches global regex', () => {
     beforeEach(() => {
       github.context.payload.pull_request.title = '[GLOBAL-123] PR'
