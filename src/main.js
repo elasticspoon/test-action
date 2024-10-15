@@ -12,7 +12,6 @@ async function run() {
     const context = github.context
     const prNumber = context.payload.pull_request?.number
     const prTitle = context.payload.pull_request?.title
-    core.info(context.payload.pull_request?.html_url)
     if (!prNumber || !prTitle) {
       core.setFailed('No issue/pull request in current context.')
       return
@@ -41,7 +40,7 @@ async function run() {
     const commentTagPattern = `<!-- elasticspoon/actions-comment-pull-request -->`
     const body = `${content}\n${commentTagPattern}`
 
-    // linkFromJira(ticketNum, ticketRepo, context.payload.html_url)
+    // linkFromJira(ticketNum, ticketRepo, context.payload.pull_request?.html_url)
 
     const comment = await findComment(
       octokit,
