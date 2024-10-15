@@ -29218,7 +29218,7 @@ async function run() {
     const context = github.context
     const prNumber = context.payload.pull_request?.number
     const prTitle = context.payload.pull_request?.title
-    core.info(JSON.stringify(context.payload))
+    core.info(context.payload.html_url)
     if (!prNumber || !prTitle) {
       core.setFailed('No issue/pull request in current context.')
       return
